@@ -21,7 +21,7 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 // CORS configuration - allowed origins from env for security
 const allowedOrigins = [
   "http://localhost:5173", // Local frontend
-  process.env.FRONTEND_URL, // Netlify frontend
+  process.env.FRONTEND_URL?.trim().replace(/\/$/, ""), // Production frontend
 ].filter(Boolean) as string[];
 
 app.use(cors({
