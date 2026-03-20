@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Pool, PoolConfig } from "pg";
 import { CreateSubmissionInput, Submission, UpdateSubmissionInput } from "./types";
 
@@ -45,6 +46,14 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     const { rows: existingSrNos } = await client.query<{ sr_no: number }>(
       "SELECT sr_no FROM submissions ORDER BY sr_no ASC"
     );
+
+    const { rows: existingBarcode } = await client.query<{ id: number }>(
+      "SELECT id FROM submissions WHERE barcode = $1",
+      [input.barcode]
+    );
+    if (existingBarcode.length > 0) {
+      throw new Error("Duplicate barcode");
+    }
 
     let nextSrNo = 1;
     for (const row of existingSrNos) {
@@ -106,6 +115,14 @@ export async function getSubmissionById(id: number): Promise<Submission | undefi
 }
 
 export async function updateSubmission(id: number, input: UpdateSubmissionInput): Promise<Submission | undefined> {
+  const { rows: existingBarcode } = await pool.query<{ id: number }>(
+    "SELECT id FROM submissions WHERE barcode = $1 AND id != $2",
+    [input.barcode, id]
+  );
+  if (existingBarcode.length > 0) {
+    throw new Error("Duplicate barcode");
+  }
+
   const now = new Date().toISOString();
 
   const query = `
@@ -137,4 +154,8 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
 
   const { rows } = await pool.query(query, values);
   return rows[0];
+}
+
+export async function deleteSubmission(id: number): Promise<void> {
+  await pool.query("DELETE FROM submissions WHERE id = $1", [id]);
 }

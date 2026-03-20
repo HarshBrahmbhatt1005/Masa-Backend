@@ -1,8 +1,9 @@
+import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import path from "node:path";
 import { ZodError } from "zod";
-import { createSubmission, getSubmissionById, initDb, listSubmissions, updateSubmission } from "./db";
+import { createSubmission, deleteSubmission, getSubmissionById, initDb, listSubmissions, updateSubmission } from "./db";
 import { createSubmissionSchema, updateSubmissionSchema } from "./validators";
 
 const app = express();
@@ -43,6 +44,11 @@ app.post("/api/submissions", async (req, res) => {
   } catch (error) {
     if (error instanceof ZodError) {
       res.status(400).json({ message: "Validation error", errors: error.issues });
+      return;
+    }
+
+    if (error instanceof Error && error.message === "Duplicate barcode") {
+      res.status(409).json({ message: "Barcode already exists" });
       return;
     }
 
@@ -90,6 +96,11 @@ app.put("/api/submissions/:id", async (req, res) => {
       return;
     }
 
+    if (error instanceof Error && error.message === "Duplicate barcode") {
+      res.status(409).json({ message: "Barcode already exists" });
+      return;
+    }
+
     res.status(500).json({ message: "Failed to update submission" });
   }
 });
@@ -112,6 +123,22 @@ app.get("/api/submissions/:id", async (req, res) => {
     res.json({ data: entry });
   } catch {
     res.status(500).json({ message: "Failed to fetch submission" });
+  }
+});
+
+app.delete("/api/submissions/:id", async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ message: "Invalid submission id" });
+    return;
+  }
+
+  try {
+    await deleteSubmission(id);
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ message: "Failed to delete submission" });
   }
 });
 
