@@ -44,8 +44,9 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     await client.query("BEGIN");
 
     const { rows: existingSrNos } = await client.query<{ sr_no: number }>(
-      "SELECT sr_no FROM submissions ORDER BY sr_no ASC"
+      "SELECT COALESCE(MAX(sr_no), 0) AS sr_no FROM submissions"
     );
+    const nextSrNo = (existingSrNos[0]?.sr_no ?? 0) + 1;
 
     const { rows: existingBarcode } = await client.query<{ id: number }>(
       "SELECT id FROM submissions WHERE barcode = $1",
@@ -53,15 +54,6 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     );
     if (existingBarcode.length > 0) {
       throw new Error("Duplicate barcode");
-    }
-
-    let nextSrNo = 1;
-    for (const row of existingSrNos) {
-      if (row.sr_no === nextSrNo) {
-        nextSrNo++;
-      } else if (row.sr_no > nextSrNo) {
-        break;
-      }
     }
 
     const now = new Date().toISOString();
@@ -104,7 +96,7 @@ export async function listSubmissions(date?: string): Promise<Submission[]> {
     params.push(date);
   }
 
-  query += " ORDER BY id DESC";
+  query += " ORDER BY sr_no DESC";
   const { rows } = await pool.query(query, params);
   return rows;
 }
@@ -157,5 +149,37 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
 }
 
 export async function deleteSubmission(id: number): Promise<void> {
-  await pool.query("DELETE FROM submissions WHERE id = $1", [id]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1. Get the sr_no of the record being deleted
+    const { rows } = await client.query<{ sr_no: number }>(
+      "SELECT sr_no FROM submissions WHERE id = $1",
+      [id]
+    );
+
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return;
+    }
+
+    const deletedSrNo = rows[0].sr_no;
+
+    // 2. Delete the record
+    await client.query("DELETE FROM submissions WHERE id = $1", [id]);
+
+    // 3. Decrement all sr_no values that were greater than the deleted sr_no
+    await client.query(
+      "UPDATE submissions SET sr_no = sr_no - 1 WHERE sr_no > $1",
+      [deletedSrNo]
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

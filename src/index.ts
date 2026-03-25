@@ -20,13 +20,29 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 })();
 
 // CORS configuration - allowed origins from env for security
-const allowedOrigins = [
-  "http://localhost:5173", // Local frontend
-  process.env.FRONTEND_URL?.trim().replace(/\/$/, ""), // Production frontend
-].filter(Boolean) as string[];
+const allowedOrigins: (string | RegExp)[] = [
+  /^http:\/\/localhost(:\d+)?$/, // Local development (any port)
+  "http://localhost:5173",       // Explicit port 5173
+  "http://localhost:5174",       // Explicit port 5174
+  process.env.FRONTEND_URL?.trim().replace(/\/$/, "") || "", 
+].filter(Boolean);
 
 app.use(cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : "*",
+  origin: (origin, callback) => {
+    // If no origin (like mobile apps or curl requests) allow it
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) return allowed.test(origin);
+      return allowed === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 
