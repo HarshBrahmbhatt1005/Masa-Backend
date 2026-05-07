@@ -20,7 +20,7 @@ export async function initDb(): Promise<void> {
       CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
         sr_no INTEGER NOT NULL UNIQUE,
-        party_name TEXT NOT NULL DEFAULT \x27\x27,
+        party_name TEXT NOT NULL DEFAULT '',
         date TEXT NOT NULL,
         bill_no TEXT NOT NULL,
         barcode TEXT NOT NULL,
@@ -33,9 +33,11 @@ export async function initDb(): Promise<void> {
       );
 
       CREATE INDEX IF NOT EXISTS idx_submissions_date ON submissions(date);
-      
-      -- Add m_p column if it doesn't exist (for existing databases)
-      DO $$ 
+    `);
+    
+    // Add m_p column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$
       BEGIN 
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                       WHERE table_name='submissions' AND column_name='m_p') THEN
