@@ -25,7 +25,6 @@ export async function initDb(): Promise<void> {
         bill_no TEXT NOT NULL,
         barcode TEXT NOT NULL,
         s_m TEXT NOT NULL,
-        m_p NUMERIC NOT NULL DEFAULT 0,
         amount NUMERIC NOT NULL,
         status TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -35,13 +34,13 @@ export async function initDb(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_submissions_date ON submissions(date);
     `);
     
-    // Add m_p column if it doesn't exist (for existing databases)
+    // Remove m_p column if it exists (cleanup)
     await client.query(`
       DO $$
       BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                      WHERE table_name='submissions' AND column_name='m_p') THEN
-          ALTER TABLE submissions ADD COLUMN m_p NUMERIC NOT NULL DEFAULT 0;
+        IF EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='submissions' AND column_name='m_p') THEN
+          ALTER TABLE submissions DROP COLUMN m_p;
         END IF;
       END $$;
     `);
@@ -71,8 +70,8 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     const now = new Date().toISOString();
 
     const query = `
-      INSERT INTO submissions (sr_no, party_name, date, bill_no, barcode, s_m, m_p, amount, status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      INSERT INTO submissions (sr_no, party_name, date, bill_no, barcode, s_m, amount, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
     const values = [
@@ -82,7 +81,6 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
       input.bill_no,
       input.barcode,
       input.s_m,
-      input.m_p,
       input.amount,
       input.status,
       now,
@@ -138,11 +136,10 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
         bill_no = $4,
         barcode = $5,
         s_m = $6,
-        m_p = $7,
-        amount = $8,
-        status = $9,
-        updated_at = $10
-    WHERE id = $11
+        amount = $7,
+        status = $8,
+        updated_at = $9
+    WHERE id = $10
     RETURNING *
   `;
   const values = [
@@ -152,7 +149,6 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
     input.bill_no,
     input.barcode,
     input.s_m,
-    input.m_p,
     input.amount,
     input.status,
     now,

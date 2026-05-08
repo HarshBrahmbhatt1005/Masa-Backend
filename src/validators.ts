@@ -14,9 +14,6 @@ export const createSubmissionSchema = z.object({
     .trim()
     .regex(barcodeRegex, "Barcode must be alphanumeric and at most 18 characters"),
   s_m: z.string().trim().min(1, "S M is required"),
-  m_p: z.number().refine((val) => val >= 100 && val <= 1000 && val % 100 === 0, {
-    message: "M P must be between 100 and 1000 in increments of 100"
-  }),
   amount: z.number().nonnegative("Amount must be non-negative"),
   status: statusSchema
 });
@@ -31,9 +28,6 @@ export const updateSubmissionSchema = z.object({
     .trim()
     .regex(barcodeRegex, "Barcode must be alphanumeric and at most 18 characters"),
   s_m: z.string().trim().min(1, "S M is required"),
-  m_p: z.number().refine((val) => val >= 100 && val <= 1000 && val % 100 === 0, {
-    message: "M P must be between 100 and 1000 in increments of 100"
-  }),
   amount: z.number().nonnegative("Amount must be non-negative"),
   status: statusSchema
 });

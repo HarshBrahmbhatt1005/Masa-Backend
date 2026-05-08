@@ -6,7 +6,6 @@ export interface Submission {
   bill_no: string;
   barcode: string;
   s_m: string;
-  m_p: number;
   amount: number;
   status: "PAID" | "UNPAID";
   created_at: string;
@@ -19,7 +18,6 @@ export interface CreateSubmissionInput {
   bill_no: string;
   barcode: string;
   s_m: string;
-  m_p: number;
   amount: number;
   status: "PAID" | "UNPAID";
 }
@@ -31,7 +29,6 @@ export interface UpdateSubmissionInput {
   bill_no: string;
   barcode: string;
   s_m: string;
-  m_p: number;
   amount: number;
   status: "PAID" | "UNPAID";
 }
