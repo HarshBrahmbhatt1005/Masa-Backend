@@ -18,6 +18,8 @@ export const createSubmissionSchema = z.object({
     message: "M P must be between 0 and 1000 in multiples of 100"
   }),
   amount: z.number().nonnegative("Amount must be non-negative"),
+  price: z.number().nonnegative("Price must be non-negative").nullable(),
+  remark: z.string().trim().max(500, "Remark must be 500 characters or less").nullable(),
   status: statusSchema
 });
 
@@ -35,6 +37,8 @@ export const updateSubmissionSchema = z.object({
     message: "M P must be between 0 and 1000 in multiples of 100"
   }),
   amount: z.number().nonnegative("Amount must be non-negative"),
+  price: z.number().nonnegative("Price must be non-negative").nullable(),
+  remark: z.string().trim().max(500, "Remark must be 500 characters or less").nullable(),
   status: statusSchema
 });
 

@@ -8,6 +8,8 @@ export interface Submission {
   s_m: string;
   m_p: number | null;
   amount: number;
+  price: number | null;
+  remark: string | null;
   status: "PAID" | "UNPAID";
   created_at: string;
   updated_at: string;
@@ -21,6 +23,8 @@ export interface CreateSubmissionInput {
   s_m: string;
   m_p: number | null;
   amount: number;
+  price: number | null;
+  remark: string | null;
   status: "PAID" | "UNPAID";
 }
 
@@ -33,5 +37,7 @@ export interface UpdateSubmissionInput {
   s_m: string;
   m_p: number | null;
   amount: number;
+  price: number | null;
+  remark: string | null;
   status: "PAID" | "UNPAID";
 }

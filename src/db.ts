@@ -27,6 +27,8 @@ export async function initDb(): Promise<void> {
         s_m TEXT NOT NULL,
         m_p NUMERIC DEFAULT NULL,
         amount NUMERIC NOT NULL,
+        price NUMERIC DEFAULT NULL,
+        remark TEXT DEFAULT NULL,
         status TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -34,14 +36,22 @@ export async function initDb(): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_submissions_date ON submissions(date);
     `);
-    
-    // Add m_p column if it doesn't exist (for existing databases)
+
+    // Add columns if they don't exist (for existing databases)
     await client.query(`
       DO $$
-      BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                      WHERE table_name='submissions' AND column_name='m_p') THEN
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name='submissions' AND column_name='m_p') THEN
           ALTER TABLE submissions ADD COLUMN m_p NUMERIC DEFAULT NULL;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name='submissions' AND column_name='price') THEN
+          ALTER TABLE submissions ADD COLUMN price NUMERIC DEFAULT NULL;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name='submissions' AND column_name='remark') THEN
+          ALTER TABLE submissions ADD COLUMN remark TEXT DEFAULT NULL;
         END IF;
       END $$;
     `);
@@ -71,8 +81,8 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     const now = new Date().toISOString();
 
     const query = `
-      INSERT INTO submissions (sr_no, party_name, date, bill_no, barcode, s_m, m_p, amount, status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      INSERT INTO submissions (sr_no, party_name, date, bill_no, barcode, s_m, m_p, amount, price, remark, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
     const values = [
@@ -84,6 +94,8 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
       input.s_m,
       input.m_p,
       input.amount,
+      input.price,
+      input.remark,
       input.status,
       now,
       now
@@ -140,9 +152,11 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
         s_m = $6,
         m_p = $7,
         amount = $8,
-        status = $9,
-        updated_at = $10
-    WHERE id = $11
+        price = $9,
+        remark = $10,
+        status = $11,
+        updated_at = $12
+    WHERE id = $13
     RETURNING *
   `;
   const values = [
@@ -154,6 +168,8 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
     input.s_m,
     input.m_p,
     input.amount,
+    input.price,
+    input.remark,
     input.status,
     now,
     id
