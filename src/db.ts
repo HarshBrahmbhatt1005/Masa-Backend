@@ -180,37 +180,5 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
 }
 
 export async function deleteSubmission(id: number): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // 1. Get the sr_no of the record being deleted
-    const { rows } = await client.query<{ sr_no: number }>(
-      "SELECT sr_no FROM submissions WHERE id = $1",
-      [id]
-    );
-
-    if (rows.length === 0) {
-      await client.query("ROLLBACK");
-      return;
-    }
-
-    const deletedSrNo = rows[0].sr_no;
-
-    // 2. Delete the record
-    await client.query("DELETE FROM submissions WHERE id = $1", [id]);
-
-    // 3. Decrement all sr_no values that were greater than the deleted sr_no
-    await client.query(
-      "UPDATE submissions SET sr_no = sr_no - 1 WHERE sr_no > $1",
-      [deletedSrNo]
-    );
-
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  await pool.query("DELETE FROM submissions WHERE id = $1", [id]);
 }
