@@ -180,5 +180,51 @@ export async function updateSubmission(id: number, input: UpdateSubmissionInput)
 }
 
 export async function deleteSubmission(id: number): Promise<void> {
-  await pool.query("DELETE FROM submissions WHERE id = $1", [id]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Confirm the record exists
+    const { rows } = await client.query<{ sr_no: number }>(
+      "SELECT sr_no FROM submissions WHERE id = $1",
+      [id]
+    );
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return;
+    }
+
+    // Delete the target record
+    await client.query("DELETE FROM submissions WHERE id = $1", [id]);
+
+    // Resequence all remaining records by their current sr_no order.
+    //
+    // Two-phase approach to avoid UNIQUE constraint violations:
+    //   Phase 1 – shift every sr_no into a safe negative range so no two
+    //             rows can collide during the reassignment.
+    //   Phase 2 – assign the final consecutive values (1, 2, 3 …) using
+    //             ROW_NUMBER() ordered by the original sr_no.
+    //
+    await client.query(`
+      UPDATE submissions
+      SET sr_no = -sr_no
+    `);
+
+    await client.query(`
+      UPDATE submissions s
+      SET sr_no = ranked.new_sr_no
+      FROM (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY -sr_no) AS new_sr_no
+        FROM submissions
+      ) ranked
+      WHERE s.id = ranked.id
+    `);
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
