@@ -73,10 +73,12 @@ app.post("/api/submissions", async (req, res) => {
 });
 
 app.get("/api/submissions", async (req, res) => {
-  const date = typeof req.query.date === "string" ? req.query.date : undefined;
+  const date     = typeof req.query.date     === "string" ? req.query.date     : undefined;
+  const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+  const dateTo   = typeof req.query.dateTo   === "string" ? req.query.dateTo   : undefined;
 
   try {
-    const submissions = await listSubmissions(date);
+    const submissions = await listSubmissions(date, dateFrom, dateTo);
     res.json({ data: submissions });
   } catch {
     res.status(500).json({ message: "Failed to fetch submissions" });

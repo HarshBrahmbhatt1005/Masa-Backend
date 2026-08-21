@@ -153,17 +153,27 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
   }
 }
 
-export async function listSubmissions(date?: string): Promise<Submission[]> {
-  let query = "SELECT * FROM submissions";
+export async function listSubmissions(date?: string, dateFrom?: string, dateTo?: string): Promise<Submission[]> {
+  const conditions: string[] = [];
   const params: string[] = [];
 
   if (date) {
-    query += " WHERE date = $1";
     params.push(date);
+    conditions.push(`date = $${params.length}`);
   }
 
-  query += " ORDER BY sr_no DESC";
-  const { rows } = await pool.query(query, params);
+  if (dateFrom) {
+    params.push(dateFrom);
+    conditions.push(`date >= $${params.length}`);
+  }
+
+  if (dateTo) {
+    params.push(dateTo);
+    conditions.push(`date <= $${params.length}`);
+  }
+
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const { rows } = await pool.query(`SELECT * FROM submissions${where} ORDER BY sr_no DESC`, params);
   return rows as Submission[];
 }
 
