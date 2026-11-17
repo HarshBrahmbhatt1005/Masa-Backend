@@ -29,7 +29,6 @@ export interface CreateSubmissionInput {
 }
 
 export interface UpdateSubmissionInput {
-  sr_no: number;
   party_name: string;
   date: string;
   bill_no: string;

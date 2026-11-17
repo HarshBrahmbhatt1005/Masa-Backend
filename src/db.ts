@@ -13,31 +13,43 @@ const poolConfig: PoolConfig = {
 
 const pool = new Pool(poolConfig);
 
+// All operations which can change ordering use the same transaction-scoped
+// advisory lock. This serializes resequencing across concurrent API requests.
+const ORDERING_LOCK_KEY = 782341;
+
+async function lockOrdering(client: PoolClient): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock($1)", [ORDERING_LOCK_KEY]);
+}
+
 /**
- * Resequence all sr_no values to be gapless (1, 2, 3 …) in ascending order,
- * preserving the original relative ordering of records.
+ * Resequence all sr_no values to be gapless. The oldest record gets 1, so the
+ * newest record in the date-sorted view gets the highest serial number.
  *
  * Two-phase approach to avoid UNIQUE constraint violations during bulk UPDATE:
  *   Phase 1 – negate every positive sr_no  → moves them into the negative space
  *             so no two rows can collide while Phase 2 runs.
- *   Phase 2 – assign ROW_NUMBER() 1, 2, 3 … ordered by sr_no DESC
- *             (least-negative first = originally-smallest sr_no = gets new value 1).
+ *   Phase 2 – rank by date/creation order from oldest to newest.
  *
  * Must be called inside an open transaction.
  */
 async function resequenceSrNos(client: PoolClient): Promise<void> {
-  // Phase 1: move all positive sr_nos to negative space
+  // Phase 1: move all positive sr_nos to negative space.
   await client.query(`UPDATE submissions SET sr_no = -sr_no WHERE sr_no > 0`);
 
-  // Phase 2: assign final consecutive values 1, 2, 3 …
-  // After phase 1 all values are negative.
-  // ORDER BY sr_no DESC → least-negative = originally-smallest → gets new_sr_no = 1
+  // Phase 2: assign final consecutive values. Dates are YYYY-MM-DD strings,
+  // so lexical order is chronological and does not depend on server timezone.
   await client.query(`
     UPDATE submissions s
     SET    sr_no = ranked.new_sr_no
     FROM (
       SELECT id,
-             ROW_NUMBER() OVER (ORDER BY sr_no DESC) AS new_sr_no
+             ROW_NUMBER() OVER (
+               ORDER BY
+                 CASE WHEN date = '' THEN 1 ELSE 0 END ASC,
+                 date ASC,
+                 created_at ASC,
+                 id ASC
+             ) AS new_sr_no
       FROM   submissions
     ) ranked
     WHERE s.id = ranked.id
@@ -90,6 +102,7 @@ export async function initDb(): Promise<void> {
     // Fix any existing gaps in sr_no on every startup (runs inside its own
     // implicit transaction since we are not in BEGIN/COMMIT here — wrap it)
     await client.query("BEGIN");
+    await lockOrdering(client);
     await resequenceSrNos(client);
     await client.query("COMMIT");
 
@@ -105,6 +118,7 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockOrdering(client);
 
     const { rows: maxRows } = await client.query<{ sr_no: number }>(
       "SELECT COALESCE(MAX(sr_no), 0) AS sr_no FROM submissions"
@@ -143,8 +157,14 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
       ]
     );
 
+    await resequenceSrNos(client);
+    const { rows: createdRows } = await client.query(
+      "SELECT * FROM submissions WHERE id = $1",
+      [rows[0].id]
+    );
+
     await client.query("COMMIT");
-    return rows[0] as Submission;
+    return createdRows[0] as Submission;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -173,7 +193,11 @@ export async function listSubmissions(date?: string, dateFrom?: string, dateTo?:
   }
 
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-  const { rows } = await pool.query(`SELECT * FROM submissions${where} ORDER BY sr_no DESC`, params);
+  const { rows } = await pool.query(`
+    SELECT * FROM submissions${where}
+    ORDER BY CASE WHEN date = '' THEN 1 ELSE 0 END ASC,
+             date DESC, created_at DESC, id DESC
+  `, params);
   return rows as Submission[];
 }
 
@@ -186,24 +210,25 @@ export async function updateSubmission(
   id: number,
   input: UpdateSubmissionInput
 ): Promise<Submission | undefined> {
-  const { rows: existingBarcode } = await pool.query<{ id: number }>(
-    "SELECT id FROM submissions WHERE barcode = $1 AND id != $2",
-    [input.barcode, id]
-  );
-  if (existingBarcode.length > 0) {
-    throw new Error("Duplicate barcode");
-  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockOrdering(client);
 
-  const now = new Date().toISOString();
+    const { rows: existingBarcode } = await client.query<{ id: number }>(
+      "SELECT id FROM submissions WHERE barcode = $1 AND id != $2",
+      [input.barcode, id]
+    );
+    if (existingBarcode.length > 0) throw new Error("Duplicate barcode");
 
-  const { rows } = await pool.query(
+    const now = new Date().toISOString();
+    const { rows } = await client.query(
     `UPDATE submissions
-     SET sr_no=$1, party_name=$2, date=$3, bill_no=$4, barcode=$5,
-         s_m=$6, m_p=$7, amount=$8, price=$9, remark=$10, status=$11, updated_at=$12
-     WHERE id=$13
+     SET party_name=$1, date=$2, bill_no=$3, barcode=$4,
+         s_m=$5, m_p=$6, amount=$7, price=$8, remark=$9, status=$10, updated_at=$11
+     WHERE id=$12
      RETURNING *`,
     [
-      input.sr_no,
       input.party_name,
       input.date,
       input.bill_no,
@@ -215,17 +240,31 @@ export async function updateSubmission(
       input.remark,
       input.status,
       now,
-      id,
+      id
     ]
   );
 
-  return rows[0] as Submission | undefined;
+    if (rows.length === 0) {
+      await client.query("COMMIT");
+      return undefined;
+    }
+    await resequenceSrNos(client);
+    const { rows: updatedRows } = await client.query("SELECT * FROM submissions WHERE id = $1", [id]);
+    await client.query("COMMIT");
+    return updatedRows[0] as Submission | undefined;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteSubmission(id: number): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockOrdering(client);
 
     // Check record exists
     const { rows } = await client.query<{ sr_no: number }>(

@@ -48,7 +48,6 @@ export const createSubmissionSchema = z.object({
 });
 
 export const updateSubmissionSchema = z.object({
-  sr_no: z.number().int().positive("Sr No must be a positive integer"),
   party_name: z.string().trim().optional().default(""),
   date: optionalDate,
   bill_no: optionalBillNo,
